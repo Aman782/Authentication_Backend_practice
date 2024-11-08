@@ -1,8 +1,12 @@
 import { User } from "../models/user.models.js";
+import jwt from "jsonwebtoken"
+import mongoose from "mongoose";
+
 
 export const registerUser = async (req, res) => {
    try {
       const { username, email, password } = req.body;
+      console.log(username, email);
 
       // Check for missing fields
       if ([username, email, password].some((field) => field?.trim() === "")) {
@@ -34,17 +38,22 @@ export const registerUser = async (req, res) => {
 
       return res.status(201).json(resUser);
    } catch (error) {
-      res.status(500).json({ message: error.message || "Internal Server Error" });
+      return res.status(500).json({ message: error.message || "Internal Server Error" });
    }
 };
 
 const generateAccessTokenAndRefreshToken = async (userId)=>{
-    const user = await User.findOne(userId);
+    const user = await User.findById(userId);
     
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
+    
+    console.log("AccessToken: ", accessToken);
+    console.log("RefreshToken: ", refreshToken);
 
     user.refreshToken = refreshToken;
+
+    console.log("RefreshToken after assinging in user obj: ", user.refreshToken);
 
     await user.save({validateBeforeSave: false});
 
@@ -64,9 +73,10 @@ export const loginUser = async (req, res)=>{
 
 
     const {username, email, password} = req.body;
+    console.log(username, email);
 
     if(!username && !email){
-        res.status(401).json("username or email required");
+        return res.status(401).json("username or email required");
     }
 
 
@@ -76,26 +86,30 @@ export const loginUser = async (req, res)=>{
     });
 
     if(!user){
-        res.status(404).json("User does not Exists");
+        return res.status(404).json("User does not Exists");
     }
 
     const validatePassword = await user.isPasswordCorrect(password);
 
     if(!validatePassword){
-       res.status(401).json("Incorrect Credentials, try again");
+       return res.status(401).json("Incorrect Credentials, try again");
     }
 
-    const updatedUser = await User.findOne({
-        $or: [{username}, {email}]
-    }).select("-password -refreshToken");
+    const {accessToken, refreshToken} = await generateAccessTokenAndRefreshToken(user._id);
 
+    const LoggedInUser = await User.findById(user._id).select("-password -refreshToken")
+   
+    console.log("AccessToken Inside function: ", accessToken);
+    console.log("RefreshToken Inside function: ", refreshToken);
+    console.log(LoggedInUser);
 
-    const {accessToken, refreshToken} = generateAccessTokenAndRefreshToken(updatedUser._id);
 
     const options = {
-        httpOnly: true,
-        secure: true
-    }
+      httpOnly: true,
+      secure: false, // Change to true in production
+      sameSite: 'Lax', // Change or remove for testing
+  };
+  
     
     return res
     .status(200)
@@ -109,5 +123,37 @@ export const loginUser = async (req, res)=>{
 }
 
 export const logoutUser = async (req, res)=>{
+   // console.log(req);
+
+   try {  
+      await User.findByIdAndUpdate(
+         req.user._id,
+         {
+             $unset: {
+                 refreshToken: 1 // this removes the field from document
+             }
+         },
+         {
+             new: true
+         }
+      );
+   
+      const options = {
+         httpOnly: true,
+         secure: false, // Change to true in production
+         sameSite: 'Lax', // Change or remove for testing
+     };
+     
+   
+     return res
+     .status(200)
+     .clearCookie("accessToken", options)
+     .clearCookie("refreshToken", options)
+     .json(req.user);
   
+  } catch (error) {
+      console.log("Error encountered here!");
+      return res.status(401).json(error.message || "Invalid Access Token!");
+  }
+   
 } 
