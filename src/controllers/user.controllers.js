@@ -154,6 +154,42 @@ export const logoutUser = async (req, res)=>{
   } catch (error) {
       console.log("Error encountered here!");
       return res.status(401).json(error.message || "Invalid Access Token!");
-  }
-   
+  }  
 } 
+
+export const refreshAccessTokenAfterExpiry = async (req, res)=>{
+   const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+   if(!incomingRefreshToken){
+      return res.status(401).json("Unauthorized Access");
+   }
+
+   try{
+      const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+
+      const user = User.findById(decodedToken?._id);
+
+      if(!user){
+         return res.status(401).json("Invalid Refresh Token");
+      }
+
+      if(incomingRefreshToken!== user?.refreshToken){
+         return res.status(401).json("Refresh Token");                     
+      }
+
+      const options = {
+         httpOnly: true,
+         secure: false, // Change to true in production
+         sameSite: 'Lax',
+      }
+
+      const {accessToken, newRefreshToken} = generateAccessTokenAndRefreshToken(user._id);
+
+      return res.status(200).cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
+      .json("Access Token Refreshed Successfully");
+
+   }catch(error){
+      return res.status(401).json(error.message || "Invalid refreshToken");
+   }
+}
