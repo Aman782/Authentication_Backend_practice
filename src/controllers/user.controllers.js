@@ -102,7 +102,7 @@ export const loginUser = async (req, res)=>{
     console.log("AccessToken Inside function: ", accessToken);
     console.log("RefreshToken Inside function: ", refreshToken);
     console.log(LoggedInUser);
-
+    
 
     const options = {
       httpOnly: true,
@@ -172,9 +172,16 @@ export const refreshAccessTokenAfterExpiry = async (req, res)=>{
       if(!user){
          return res.status(401).json("Invalid Refresh Token");
       }
+      
+      console.log(user.refreshToken);
+      console.log(req.cookies);
+      console.log(user.accessToken);
+      console.log("DecodedToken: ",decodedToken);
 
+
+      console.log(incomingRefreshToken);
       if(incomingRefreshToken!== user?.refreshToken){
-         return res.status(401).json("Refresh Token");                     
+         return res.status(401).json("Invalid Refresh Token");                     
       }
 
       const options = {
@@ -193,3 +200,51 @@ export const refreshAccessTokenAfterExpiry = async (req, res)=>{
       return res.status(401).json(error.message || "Invalid refreshToken");
    }
 }
+
+export const changePassword = async (req, res)=>{
+   try {
+      const {oldPassword, newPassword, confirmPassword} = req.body;
+   
+      if(newPassword!==confirmPassword){
+         return res.status(400).json("Incorrect Password");
+      }
+   
+      const user = await User.findById(req.user?._id);
+      
+      const isValidPassword = await user.isPasswordCorrect(oldPassword);
+   
+      if(!isValidPassword){
+         return res.status(401).json("Incorrect Old Password Entered, try again");
+      }
+   
+      user.password = newPassword;
+      await user.save({validateBeforeSave: false});
+   
+      return res.status(200).json("Password Changed SuccessFully");
+      
+   } catch (error) {
+      return res.status(401).json(error.message || "Invalid Access");
+   }
+}
+
+
+export const changeUsername = async (req, res)=>{
+   try {
+      const {newUsername, confirmUsername} = req.body;
+   
+      if(newUsername!==confirmUsername){
+         return res.status(400).json("Incorrect Username entered");
+      }
+   
+      const user = await User.findById(req.user?._id);
+     
+      user.username = newUsername;
+      await user.save({validateBeforeSave: false});
+   
+      return res.status(200).json("Username Changed SuccessFully");
+      
+   } catch (error) {
+      return res.status(401).json(error.message || "Invalid Access");
+   }
+}
+
